@@ -1,4 +1,8 @@
 backup_restore_progress = {"step": "", "in_progress": False, "error": None}
+
+# Globale Variablen für Backup-Einstellungen
+BACKUP_INTERVAL_HOURS = 24
+BACKUP_KEEP_COUNT = 3
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 import subprocess
 import os
@@ -518,6 +522,33 @@ def backup_details(backup_file):
     structure = extract_backup_structure(backup_path)
     return jsonify(structure)
 
+
+def start_backup_scheduler():
+    def scheduled_backup():
+        while True:
+            try:
+                print("[Backup-Scheduler] Starte automatisches Backup...")
+                create_backup()
+                cleanup_old_backups(BACKUP_KEEP_COUNT)
+                print("[Backup-Scheduler] Backup erfolgreich erstellt.")
+            except Exception as e:
+                print(f"[Backup-Scheduler] Fehler beim Erstellen des automatischen Backups: {e}")
+            time.sleep(BACKUP_INTERVAL_HOURS * 3600)
+    thread = threading.Thread(target=scheduled_backup, daemon=True)
+    thread.start()
+
+@app.route('/backup/settings', methods=['GET', 'POST'])
+@login_required
+def backup_settings():
+    global BACKUP_INTERVAL_HOURS, BACKUP_KEEP_COUNT
+    if request.method == 'POST':
+        BACKUP_INTERVAL_HOURS = int(request.form.get('interval', 24))
+        BACKUP_KEEP_COUNT = int(request.form.get('keep', 3))
+        flash(f'Einstellungen gespeichert: Intervall {BACKUP_INTERVAL_HOURS}h, Behalte {BACKUP_KEEP_COUNT} Backups')
+        return redirect(url_for('backup_settings'))
+
+    return render_template('backup_settings.html', interval=BACKUP_INTERVAL_HOURS, keep=BACKUP_KEEP_COUNT)
+
 if __name__ == '__main__':
     # Initialisiere die Datenbank
     init_db()
@@ -525,5 +556,8 @@ if __name__ == '__main__':
     # Starte den Hintergrund-Thread für die Metrikerfassung
     metrics_thread = threading.Thread(target=background_metrics_recorder, daemon=True)
     metrics_thread.start()
+    
+    # Starte den Backup-Scheduler
+    start_backup_scheduler()
     
     app.run(host='0.0.0.0', port=8080)

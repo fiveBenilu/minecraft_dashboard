@@ -2,9 +2,10 @@
 {% block content %}
 <div class="container-fluid py-4">
     <h2 class="mb-4"><i class="bi bi-hdd-stack me-2"></i>Backups verwalten</h2>
+    <a href="{{ url_for('backup_settings') }}" class="control-btn control-btn-restart mb-3 d-inline-block"><i class="bi bi-gear"></i> Einstellungen</a>
 
     <form method="POST" action="{{ url_for('backup_create') }}" onsubmit="showBackupProgress()">
-        <button class="btn btn-success mb-3"><i class="bi bi-plus-circle"></i> Neues Backup erstellen</button>
+        <button class="control-btn control-btn-start"><i class="bi bi-plus-circle"></i> Neues Backup erstellen</button>
     </form>
 
     <div class="modal fade" id="backupProgressModal" tabindex="-1" aria-labelledby="backupProgressModalLabel" aria-hidden="true">
@@ -64,24 +65,22 @@
 
     <div class="row">
         {% for backup in backups %}
-        <div class="col-md-6 col-lg-4">
-            <div class="card bg-dark text-white border border-light-subtle mb-4 shadow-sm h-100">
-                <div class="card-body d-flex flex-column justify-content-between">
-                    <div>
-                        <h5 class="card-title"><i class="bi bi-file-earmark-zip me-1"></i>{{ backup.name }}</h5>
-                        <p class="card-text mb-1"><strong>Erstellt am:</strong> {{ backup.created }}</p>
-                        <p class="card-text mb-3"><strong>Größe:</strong> {{ backup.size }}</p>
-                    </div>
-                    <div class="mt-auto">
-                        <button onclick="if(confirm('Bist du sicher, dass du dieses Backup wiederherstellen willst? Der aktuelle Zustand wird vorher gesichert.')) restoreBackup('{{ backup.name }}');" class="btn btn-warning btn-sm w-100"><i class="bi bi-arrow-clockwise"></i> Wiederherstellen</button>
-                        <form method="POST" action="{{ url_for('backup_delete', backup_file=backup.name) }}" onsubmit="return confirm('Willst du dieses Backup wirklich löschen?')">
-                            <button class="btn btn-danger btn-sm w-100 mt-2"><i class="bi bi-trash"></i> Löschen</button>
-                        </form>
-                        <button class="btn btn-outline-info btn-sm w-100 mt-2" type="button" onclick='loadDetails("{{ backup.name }}")'>
-                            <i class="bi bi-info-circle"></i> Details ansehen
-                        </button>
-                    </div>
-                </div>
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="dashboard-card h-100 d-flex flex-column justify-content-between">
+              <div class="dashboard-card-body">
+                <h5 class="fw-bold"><i class="bi bi-file-earmark-zip me-1"></i>{{ backup.name }}</h5>
+                <p class="mb-1"><strong>Erstellt am:</strong> {{ backup.created }}</p>
+                <p class="mb-3"><strong>Größe:</strong> {{ backup.size }}</p>
+              </div>
+              <div class="dashboard-card-footer mt-auto px-3 pt-3 pb-3">
+                <button onclick="if(confirm('Bist du sicher, dass du dieses Backup wiederherstellen willst? Der aktuelle Zustand wird vorher gesichert.')) restoreBackup('{{ backup.name }}');" class="control-btn control-btn-restart w-100 mb-3"><i class="bi bi-arrow-clockwise"></i> Wiederherstellen</button>
+                <form method="POST" action="{{ url_for('backup_delete', backup_file=backup.name) }}" onsubmit="return confirm('Willst du dieses Backup wirklich löschen?')">
+                  <button class="control-btn control-btn-stop w-100 mb-3"><i class="bi bi-trash"></i> Löschen</button>
+                </form>
+                <button class="control-btn control-btn-start w-100 mb-3" type="button" onclick='loadDetails("{{ backup.name }}")'>
+                  <i class="bi bi-info-circle"></i> Details ansehen
+                </button>
+              </div>
             </div>
         </div>
         {% endfor %}
