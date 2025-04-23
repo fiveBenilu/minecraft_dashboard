@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-4">
+    <h2 class="mb-4"><i class="bi bi-hdd-stack me-2"></i>Backups verwalten</h2>
+
+    <form method="POST" action="{{ url_for('backup_create') }}" onsubmit="showBackupProgress()">
+        <button class="btn btn-success mb-3"><i class="bi bi-plus-circle"></i> Neues Backup erstellen</button>
+    </form>
+
+    <div class="modal fade" id="backupProgressModal" tabindex="-1" aria-labelledby="backupProgressModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-white">
+          <div class="modal-header">
+            <h5 class="modal-title" id="backupProgressModalLabel">Backup wird erstellt...</h5>
+          </div>
+          <div class="modal-body">
+            <div class="progress">
+              <div id="backupProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%"></div>
+            </div>
+            <ul class="mt-3 mb-0" id="backupProgressSteps" style="list-style:none;padding-left:0;">
+              <li><span id="step-1">🔄 Backup-Vorbereitung...</span></li>
+              <li><span id="step-2">📦 Archiv wird erstellt...</span></li>
+              <li><span id="step-3">✅ Backup abgeschlossen</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="restoreProgressModal" tabindex="-1" aria-labelledby="restoreProgressModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-white">
+          <div class="modal-header">
+            <h5 class="modal-title" id="restoreProgressModalLabel">Backup wird wiederhergestellt...</h5>
+          </div>
+          <div class="modal-body">
+            <div class="progress">
+              <div id="restoreProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%"></div>
+            </div>
+            <ul class="mt-3 mb-0" id="restoreProgressSteps" style="list-style:none;padding-left:0;">
+              <li><span id="rstep-1">🔄 Backup wird validiert...</span></li>
+              <li><span id="rstep-2">🗃️ Bestehender Stand wird gesichert...</span></li>
+              <li><span id="rstep-3">📂 Backup wird extrahiert...</span></li>
+              <li><span id="rstep-4">✅ Wiederherstellung abgeschlossen</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="detailsModal" tabindex="-1" aria-labelledby="detailsModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content bg-dark text-white">
+          <div class="modal-header">
+            <h5 class="modal-title" id="detailsModalLabel">Backup-Details</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Schließen"></button>
+          </div>
+          <div class="modal-body">
+            <div id="detailsContent" class="small"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+        {% for backup in backups %}
+        <div class="col-md-6 col-lg-4">
+            <div class="card bg-dark text-white border border-light-subtle mb-4 shadow-sm h-100">
+                <div class="card-body d-flex flex-column justify-content-between">
+                    <div>
+                        <h5 class="card-title"><i class="bi bi-file-earmark-zip me-1"></i>{{ backup.name }}</h5>
+                        <p class="card-text mb-1"><strong>Erstellt am:</strong> {{ backup.created }}</p>
+                        <p class="card-text mb-3"><strong>Größe:</strong> {{ backup.size }}</p>
+                    </div>
+                    <div class="mt-auto">
+                        <button onclick="if(confirm('Bist du sicher, dass du dieses Backup wiederherstellen willst? Der aktuelle Zustand wird vorher gesichert.')) restoreBackup('{{ backup.name }}');" class="btn btn-warning btn-sm w-100"><i class="bi bi-arrow-clockwise"></i> Wiederherstellen</button>
+                        <form method="POST" action="{{ url_for('backup_delete', backup_file=backup.name) }}" onsubmit="return confirm('Willst du dieses Backup wirklich löschen?')">
+                            <button class="btn btn-danger btn-sm w-100 mt-2"><i class="bi bi-trash"></i> Löschen</button>
+                        </form>
+                        <button class="btn btn-outline-info btn-sm w-100 mt-2" type="button" onclick='loadDetails("{{ backup.name }}")'>
+                            <i class="bi bi-info-circle"></i> Details ansehen
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+<style>
+  .list-unstyled li {
+    margin-bottom: 2px;
+  }
+</style>
+{% block scripts %}
+<script>
+  function restoreBackup(backupFile) {
+    fetch(`/backup/restore/${backupFile}`, { method: 'POST' })
+      .then(response => response.json())
+      .then(data => {
+        console.log("Restore gestartet:", data);
+        showRestoreProgress();
+      })
+      .catch(err => {
+        console.error("Fehler beim Starten der Wiederherstellung:", err);
+        alert("Wiederherstellung konnte nicht gestartet werden.");
+      });
+  }
+  function loadDetails(name) {
+    fetch(`/backup/details/${name}`)
+      .then(response => response.json())
+      .then(data => {
+        console.log("Empfangene Detaildaten:", data);
+        showDetails(data, name);
+      })
+      .catch(error => {
+        console.error("Fehler beim Laden der Backup-Details:", error);
+        showDetails([], name);
+      });
+  }
+
+  function showBackupProgress() {
+    const modal = new bootstrap.Modal(document.getElementById('backupProgressModal'));
+    modal.show();
+  }
+
+  function showRestoreProgress() {
+    const modal = new bootstrap.Modal(document.getElementById('restoreProgressModal'));
+    modal.show();
+
+    const steps = {
+      1: document.getElementById("rstep-1"),
+      2: document.getElementById("rstep-2"),
+      3: document.getElementById("rstep-3"),
+      4: document.getElementById("rstep-4")
+    };
+
+    console.log("Starte Wiederherstellungs-Progress Abfrage...");
+
+    const interval = setInterval(() => {
+      fetch("/backup/restore/status")
+        .then(response => response.json())
+        .then(data => {
+          console.log("Empfangene Daten für Restore-Status:", data);
+
+          let step = 1;
+          if (data.step.includes("sichern")) step = 2;
+          if (data.step.includes("wiederhergestellt")) step = 3;
+          if (data.step.includes("erfolgreich eingespielt")) step = 4;
+
+          Object.entries(steps).forEach(([key, el]) => {
+            const stepNum = parseInt(key);
+            el.className = "";
+            if (stepNum < step) {
+              el.textContent = "✅ " + el.textContent.replace(/^.*? /, '');
+              el.classList.add("text-success", "fw-bold");
+              el.style.opacity = "1";
+            } else if (stepNum === step) {
+              el.textContent = "➡️ " + data.step;
+              el.classList.add("text-warning", "fw-bold", "bg-dark", "px-2", "py-1", "rounded");
+              el.style.opacity = "1";
+            } else {
+              el.textContent = el.textContent.replace(/^✅ /, '').replace(/^➡️ /, '');
+              el.style.opacity = "0.5";
+            }
+          });
+
+          if (!data.in_progress) {
+            clearInterval(interval);
+            steps[4].textContent = data.error ? "❌ Fehler beim Wiederherstellen." : "✅ Backup erfolgreich wiederhergestellt!";
+            steps[4].className = data.error ? "text-danger fw-bold" : "text-success fw-bold";
+            steps[4].style.opacity = "1";
+            setTimeout(() => {
+              const modal = bootstrap.Modal.getInstance(document.getElementById('restoreProgressModal'));
+              modal.hide();
+              window.location.reload();
+            }, 2000);
+          }
+        })
+        .catch(() => {
+          console.error("Fehler beim Abrufen des Restore-Status.");
+          clearInterval(interval);
+          Object.values(steps).forEach(el => el.style.opacity = "0.5");
+          steps[4].style.opacity = "1";
+          steps[4].textContent = "❌ Fehler beim Wiederherstellen.";
+          steps[4].classList.add("fw-bold", "text-danger");
+        });
+    }, 1000);
+
+    return true;
+  }
+
+  function showDetails(details, name) {
+    const content = document.getElementById('detailsContent');
+    document.getElementById('detailsModalLabel').textContent = `Backup-Details: ${name}`;
+
+    if (!Array.isArray(details) || details.length === 0) {
+      content.innerHTML = '<p class="text-muted">Keine Details verfügbar.</p>';
+      return;
+    }
+
+    // Hilfsfunktion zum Formatieren der Größe
+    function formatSize(bytes) {
+      return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    const tree = {};
+    details.forEach(item => {
+      const parts = item.name.split('/');
+      let current = tree;
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        if (!current[part]) {
+          current[part] = {
+            __meta: i === parts.length - 1 ? item : null,
+            __children: {}
+          };
+        }
+        current = current[part].__children;
+      }
+    });
+
+    function renderTree(node, parentElement, indent = 0) {
+      for (const [name, data] of Object.entries(node)) {
+        const el = document.createElement('div');
+        el.classList.add('mb-1');
+        el.style.paddingLeft = `${indent * 20}px`;
+
+        const meta = data.__meta;
+        const isFolder = !meta || meta.type === 'Ordner';
+        const size = meta ? formatSize(meta.size) : '0 MB';
+        const icon = isFolder ? 'bi-folder' : 'bi-file-earmark';
+
+        if (isFolder) {
+          const toggleId = `collapse-${Math.random().toString(36).substr(2, 9)}`;
+          el.innerHTML = `
+            <a data-bs-toggle="collapse" href="#${toggleId}" role="button" aria-expanded="false" aria-controls="${toggleId}" class="text-decoration-none text-white">
+              <i class="bi ${icon} me-1"></i>${name} <span class="text-success ms-2">(${size})</span>
+            </a>
+            <div class="collapse" id="${toggleId}"></div>
+          `;
+          parentElement.appendChild(el);
+
+          const collapseTarget = el.querySelector(`#${toggleId}`);
+          renderTree(data.__children, collapseTarget, indent + 1);
+        } else {
+          el.innerHTML = `<i class="bi ${icon} me-1"></i>${name} <span class="text-success ms-2">(${size})</span>`;
+          parentElement.appendChild(el);
+        }
+      }
+    }
+
+    const container = document.createElement('div');
+    renderTree(tree, container);
+    content.innerHTML = '';
+    content.appendChild(container);
+
+    const modal = new bootstrap.Modal(document.getElementById('detailsModal'));
+    modal.show();
+  }
+
+  {% if success_message %}
+    setTimeout(() => {
+      const modal = bootstrap.Modal.getInstance(document.getElementById('backupProgressModal'));
+      modal.hide();
+      alert("✅ Backup erfolgreich erstellt!");
+    }, 2000);
+  {% endif %}
+</script>
+{% endblock %}

@@ -1,0 +1,52 @@
+<div class="row">
+    <div class="col-lg-6">
+        <div class="dashboard-card">
+            <div class="dashboard-card-header">
+                <span>Server Status & Kontrolle</span>
+            </div>
+            <div class="dashboard-card-body">
+                <div class="d-flex align-items-center mb-4">
+                    <span class="status-indicator {{ 'status-online' if server_status == 'Läuft' else 'status-offline' }}"></span>
+                    <span class="h5 mb-0">{{ server_status }}</span>
+                    <span class="ms-auto">Uptime: <span id="uptime">Wird geladen...</span></span>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-sm-4">
+                        <button id="startBtn" class="control-btn control-btn-start w-100" onclick="handleServerAction('start', this)">
+                            <i class="bi bi-play-fill"></i> <span>Start</span>
+                        </button>
+                    </div>
+                    <div class="col-sm-4">
+                        <button id="stopBtn" class="control-btn control-btn-stop w-100" onclick="handleServerAction('stop', this)">
+                            <i class="bi bi-stop-fill"></i> <span>Stop</span>
+                        </button>
+                    </div>
+                    <div class="col-sm-4">
+                        <button id="restartBtn" class="control-btn control-btn-restart w-100" onclick="handleServerAction('restart', this)">
+                            <i class="bi bi-arrow-repeat"></i> <span>Restart</span>
+                        </button>
+                    </div>
+                </div>
+                <script>
+                    function handleServerAction(action, button) {
+                        const icon = button.querySelector('i');
+                        const text = button.querySelector('span');
+                        const originalIcon = icon.className;
+                        const originalText = text.textContent;
+
+                        icon.className = 'spinner-border spinner-border-sm';
+                        text.textContent = ' Lädt...';
+
+                        fetch(`/${action}`)
+                            .then(() => {
+                                window.location.reload();
+                            })
+                            .catch(() => {
+                                icon.className = originalIcon;
+                                text.textContent = originalText;
+                            });
+                    }
+                </script>
+            </div>
+        </div>
+    </div>

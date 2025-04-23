@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Minecraft Server Control | Logging{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h2><i class="bi bi-clipboard-data me-2"></i>Logging</h2>
+        <div id="log-container" class="dashboard-card-body bg-dark text-light" style="max-height: 600px; overflow-y: auto; font-family: monospace; white-space: pre-wrap; padding: 10px; border-radius: 5px; border: 1px solid #444;">
+            <span class="text-muted">Log wird geladen...</span>
+        </div>
+    </div>
+</div>
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="dashboard-card">
+            <div class="dashboard-card-header">
+                <span>Spielerstatus</span>
+            </div>
+            <div class="dashboard-card-body" style="min-height: 200px;" id="player-status">
+                <span class="text-muted">Lade Spielerstatus...</span>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    const logContainer = document.getElementById('log-container');
+
+    async function fetchLogs() {
+        try {
+            const response = await fetch('/logs/data');
+            const logs = await response.text();
+            logContainer.innerText = logs;
+            logContainer.scrollTop = logContainer.scrollHeight;
+        } catch (error) {
+            logContainer.innerHTML = '<span class="text-danger">Fehler beim Laden der Logs.</span>';
+            console.error('Fehler beim Laden der Logs:', error);
+        }
+    }
+
+    // Initial fetch and set interval
+    fetchLogs();
+    setInterval(fetchLogs, 5000);
+
+    async function fetchPlayerData() {
+        try {
+            const res = await fetch('/logs/players');
+            const data = await res.json();
+
+            const onlinePlayers = Object.entries(data.online);
+            const offlinePlayers = Object.entries(data.offline);
+
+            const html = `
+                <h5 class="text-success">Online Spieler (${onlinePlayers.length})</h5>
+                <ul class="text-light">
+                    ${onlinePlayers.map(([name, seconds]) => `<li><i class="bi bi-circle-fill text-success me-2"></i><strong>${name}</strong> – ${Math.floor(seconds / 60)} Min online</li>`).join('')}
+                </ul>
+                <h5 class="text-muted mt-3">Offline Spieler (${offlinePlayers.length})</h5>
+                <ul class="text-muted">
+                    ${offlinePlayers.map(([name, seconds]) => `<li><i class="bi bi-circle me-2"></i><strong>${name}</strong> – vor ${Math.floor(seconds / 60)} Min offline</li>`).join('')}
+                </ul>
+            `;
+
+            document.getElementById("player-status").innerHTML = html;
+        } catch (error) {
+            console.error("Fehler beim Laden der Spielerstatusdaten:", error);
+            document.getElementById("player-status").innerHTML = '<span class="text-danger">Fehler beim Laden der Spielerstatusdaten.</span>';
+        }
+    }
+
+    fetchPlayerData();
+    setInterval(fetchPlayerData, 60000);
+</script>
+{% endblock %}

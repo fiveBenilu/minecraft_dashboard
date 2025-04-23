@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+backup_restore_progress = {"step": "", "in_progress": False, "error": None}
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 import subprocess
 import os
 import psutil
@@ -7,9 +8,60 @@ from datetime import datetime
 import time
 import threading
 from functools import wraps
+import atexit
+import signal
+import shutil
+
+minecraft_process = None
+
+# Globale Variablen für Spieleraktivität
+active_players = {}
+total_online_players = 0
+
+import re
+
+def update_player_activity():
+    global active_players, total_online_players
+    log_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../minecraft/logs/latest.log'))
+    if not os.path.exists(log_path):
+        active_players = {}
+        total_online_players = 0
+        return
+
+    # join_pattern = re.compile(r'\[(.*?)\] \[.*\]: (.*)\[.*\] logged in with entity id')
+    join_pattern = re.compile(r'\[\d{2}:\d{2}:\d{2}\] \[.*?\]: (.+?) joined the game')
+    leave_pattern = re.compile(r'\[\d{2}:\d{2}:\d{2}\] \[.*?\]: (.+?) left the game')
+
+    last_seen = {}
+    joined = {}
+
+    with open(log_path, 'r') as f:
+        for line in f:
+            join_match = join_pattern.search(line)
+            if join_match:
+                timestamp = datetime.strptime(line[1:9], '%H:%M:%S')
+                player = join_match.group(1)
+                joined[player] = timestamp
+                last_seen[player] = timestamp
+                continue
+
+            leave_match = leave_pattern.search(line)
+            if leave_match:
+                timestamp = datetime.strptime(line[1:9], '%H:%M:%S')
+                player = leave_match.group(1)
+                last_seen[player] = timestamp
+                if player in joined:
+                    del joined[player]
+
+    # Store active and offline players
+    active_players = {
+        'online': {p: (datetime.now() - joined[p]).seconds for p in joined},
+        'offline': {p: (datetime.now() - last_seen[p]).seconds for p in last_seen if p not in joined}
+    }
+    total_online_players = len(joined)
 
 app = Flask(__name__)
-app.secret_key = 'afd123'  # Ändere das in der Produktion!
+app.secret_key = 'abc123'  # Ändere das in der Produktion!
 
 USERNAME = 'admin'
 PASSWORD = 'minecraft1'
@@ -43,15 +95,13 @@ def init_db():
     conn.close()
 
 def get_server_status():
-    try:
-        result = subprocess.run(
-            ['sudo', 'systemctl', 'is-active', '--quiet', 'minecraft'],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-        return "Läuft" if result.returncode == 0 else "Gestoppt"
-    except Exception:
-        return "Unbekannt"
+    for proc in psutil.process_iter(['name', 'cmdline']):
+        try:
+            if 'java' in proc.info['name'] and any('server.jar' in str(arg) for arg in proc.info['cmdline']):
+                return "Läuft"
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+    return "Gestoppt"
 
 # Funktion zum Aufzeichnen der Metriken
 def record_metrics():
@@ -119,22 +169,43 @@ def logout():
 @app.route('/start')
 @login_required
 def start():
-    subprocess.run(['sudo', 'systemctl', 'start', 'minecraft'])
-    record_metrics()  # Sofort den neuen Status aufzeichnen
+    global minecraft_process
+    if get_server_status() == "Gestoppt":
+        minecraft_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../minecraft'))
+        jar_path = os.path.join(minecraft_dir, 'server.jar')
+        if os.path.exists(jar_path):
+            minecraft_process = subprocess.Popen(
+                ['java', '-Xmx1024M', '-Xms1024M', '-jar', 'server.jar', 'nogui'],
+                cwd=minecraft_dir,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+    record_metrics()
     return redirect(url_for('index'))
 
 @app.route('/stop')
 @login_required
 def stop():
-    subprocess.run(['sudo', 'systemctl', 'stop', 'minecraft'])
-    record_metrics()  # Sofort den neuen Status aufzeichnen
+    global minecraft_process
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        try:
+            if 'java' in proc.info['name'] and any('server.jar' in str(arg) for arg in proc.info['cmdline']):
+                proc.terminate()
+                proc.wait(timeout=10)
+                break
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired):
+            continue
+    minecraft_process = None
+    record_metrics()
     return redirect(url_for('index'))
 
 @app.route('/restart')
 @login_required
 def restart():
-    subprocess.run(['sudo', 'systemctl', 'restart', 'minecraft'])
-    record_metrics()  # Sofort den neuen Status aufzeichnen
+    global minecraft_process
+    stop()
+    time.sleep(2)
+    start()
     return redirect(url_for('index'))
 
 @app.route('/systemdata')
@@ -241,6 +312,211 @@ def get_uptime():
     conn.close()
     
     return jsonify({'uptime': uptime_str})
+
+@app.route('/logs')
+@login_required
+def logs():
+    update_player_activity()
+    log_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../minecraft/logs/latest.log'))
+    if not os.path.exists(log_path):
+        logs = ["Logdatei nicht gefunden. Stelle sicher, dass dein Server läuft und Logs erzeugt."]
+    else:
+        with open(log_path, 'r') as f:
+            logs = f.readlines()[-200:]
+    return render_template('logs.html', logs=logs, players=active_players, total_players=total_online_players)
+
+
+# Optionaler API-Endpunkt für Spielerinformationen als JSON
+@app.route('/logs/players')
+@login_required
+def logs_players():
+    update_player_activity()
+    return jsonify({
+        'online': active_players['online'],
+        'offline': active_players['offline'],
+        'total_online': total_online_players
+    })
+
+
+#Backup-Funktionen
+BACKUP_DIR = os.path.join(os.path.dirname(__file__), 'backups')
+MINECRAFT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../minecraft'))
+
+import tarfile
+
+def extract_backup_structure(backup_path):
+    print(f"[DEBUG] Starte extract_backup_structure mit Pfad: {backup_path}")
+    structure = []
+    try:
+        with tarfile.open(backup_path, "r:gz") as tar:
+            print(f"[DEBUG] Archiv geöffnet: {backup_path}, {len(tar.getmembers())} Einträge gefunden.")
+            for member in tar.getmembers():
+                print(f"[DEBUG] {member.name} | Typ: {'Ordner' if member.isdir() else 'Datei'} | Größe: {member.size}")
+                # Ignoriere potenziell gefährliche oder leere Einträge
+                if not member.name or member.name.startswith("../"):
+                    continue
+                structure.append({
+                    "name": os.path.relpath(member.name),
+                    "size": member.size,
+                    "type": "Ordner" if member.isdir() else "Datei"
+                })
+    except Exception as e:
+        structure.append({"name": f"Fehler beim Lesen des Archivs: {str(e)}", "size": 0, "type": "Fehler"})
+    return structure
+
+def list_backups():
+    if not os.path.exists(BACKUP_DIR):
+        os.makedirs(BACKUP_DIR)
+    backups = []
+    for file in sorted(os.listdir(BACKUP_DIR), reverse=True):
+        path = os.path.join(BACKUP_DIR, file)
+        size = os.path.getsize(path) / 1024 / 1024  # in MB
+        created = datetime.fromtimestamp(os.path.getmtime(path)).strftime('%d.%m.%Y %H:%M')
+        # Optional: Struktur einlesen, aber für Übersicht nicht notwendig, Details-API nutzen
+        backups.append({
+            'name': file,
+            'size': f"{size:.2f} MB",
+            'created': created,
+            'delete_filename': file  # Dateiname für das Löschen bereitstellen (bereits enthalten)
+        })
+    return backups
+
+def create_backup():
+    if not os.path.exists(BACKUP_DIR):
+        os.makedirs(BACKUP_DIR)
+
+    date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    backup_path = os.path.join(BACKUP_DIR, f'backup_{date_str}.tar.gz')
+    subprocess.run(
+        ['tar', '--exclude=./backups', '-czf', backup_path, '.'],
+        cwd=os.path.abspath(MINECRAFT_DIR),
+        check=True
+    )
+    return backup_path
+
+def cleanup_old_backups(days_to_keep=3):
+    backups = list_backups()
+    to_delete = backups[3:]
+    for b in to_delete:
+        os.remove(os.path.join(BACKUP_DIR, b['name']))
+
+@app.route('/backups')
+@login_required
+def backup_page():
+    backups = list_backups()
+    print("Backup funktion aufgerunfn")
+    # Lade die Backup-Struktur für jedes Backup vorab
+    detailed_backups = []
+    for b in backups:
+        print(f"[DEBUG] Lade Struktur für Backup: {b['name']}")
+        backup_path = os.path.join(BACKUP_DIR, b['name'])
+        structure = extract_backup_structure(backup_path)
+        b['structure'] = structure
+        detailed_backups.append(b)
+    return render_template('backup.html', backups=detailed_backups)
+
+@app.route('/backup/create', methods=['POST'])
+@login_required
+def backup_create():
+    create_backup()
+    cleanup_old_backups()
+    flash('Backup wurde erfolgreich erstellt.')
+    return redirect(url_for('backup_page'))
+
+@app.route('/backup/restore/<backup_file>', methods=['POST'])
+@login_required
+def backup_restore(backup_file):
+    def restore_task():
+        global backup_restore_progress
+        backup_restore_progress = {"step": "Backup-Vorgang gestartet...", "in_progress": True, "error": None}
+        try:
+            backup_restore_progress["step"] = "Aktuellen Zustand sichern"
+            create_backup()
+
+            minecraft_dir = MINECRAFT_DIR
+            for item in os.listdir(minecraft_dir):
+                item_path = os.path.join(minecraft_dir, item)
+                if item == 'backups':
+                    continue
+                if os.path.isfile(item_path) or os.path.islink(item_path):
+                    os.unlink(item_path)
+                elif os.path.isdir(item_path):
+                    shutil.rmtree(item_path)
+
+            backup_path = os.path.join(BACKUP_DIR, backup_file)
+            backup_restore_progress["step"] = "Backup wird wiederhergestellt"
+
+            subprocess.run(['tar', '--strip-components=1', '-xzf', backup_path], cwd=minecraft_dir, check=True)
+
+            backup_restore_progress["step"] = "Backup erfolgreich eingespielt"
+        except subprocess.CalledProcessError as e:
+            backup_restore_progress["error"] = str(e)
+            backup_restore_progress["step"] = "Fehler beim Wiederherstellen"
+        finally:
+            time.sleep(1)
+            backup_restore_progress["in_progress"] = False
+
+    threading.Thread(target=restore_task).start()
+    return jsonify({"message": "Wiederherstellung gestartet"})
+
+
+@app.route('/backup/restore/status')
+@login_required
+def backup_restore_status():
+    response = {
+        "step": backup_restore_progress["step"],
+        "in_progress": backup_restore_progress["in_progress"],
+        "error": backup_restore_progress["error"]
+    }
+    return jsonify(response)
+
+
+# Minecraft-Server bei Beenden automatisch stoppen
+
+def stop_minecraft_on_exit():
+    global minecraft_process
+    if minecraft_process and minecraft_process.poll() is None:
+        print("Minecraft-Server wird beendet...")
+        minecraft_process.send_signal(signal.SIGINT)
+        try:
+            minecraft_process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            minecraft_process.kill()
+
+atexit.register(stop_minecraft_on_exit)
+signal.signal(signal.SIGTERM, lambda signum, frame: (stop_minecraft_on_exit(), os._exit(0)))
+signal.signal(signal.SIGINT, lambda signum, frame: (stop_minecraft_on_exit(), os._exit(0)))
+
+
+@app.route('/logs/data')
+@login_required
+def logs_data():
+    log_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../minecraft/logs/latest.log'))
+    if not os.path.exists(log_path):
+        return "Logdatei nicht gefunden."
+    with open(log_path, 'r') as f:
+        return f.read()[-15000:]  # nur die letzten Zeichen für Performance
+
+@app.route('/backup/delete/<backup_file>', methods=['POST'])
+@login_required
+def backup_delete(backup_file):
+    backup_path = os.path.join(BACKUP_DIR, backup_file)
+    if os.path.exists(backup_path):
+        os.remove(backup_path)
+        flash(f'Backup {backup_file} wurde gelöscht.')
+    else:
+        flash(f'Datei {backup_file} nicht gefunden.')
+    return redirect(url_for('backup_page'))
+
+@app.route('/backup/details/<backup_file>')
+@login_required
+def backup_details(backup_file):
+    print(f"[DEBUG] backup_details für: {backup_file}")
+    backup_path = os.path.join(BACKUP_DIR, backup_file)
+    if not os.path.exists(backup_path):
+        return jsonify({"error": "Datei nicht gefunden"}), 404
+    structure = extract_backup_structure(backup_path)
+    return jsonify(structure)
 
 if __name__ == '__main__':
     # Initialisiere die Datenbank

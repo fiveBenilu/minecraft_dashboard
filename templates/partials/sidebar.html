@@ -1,0 +1,14 @@
+<div class="sidebar">
+    <a href="{{ url_for('index') }}" class="sidebar-link {% if request.path == '/' %}active{% endif %}">
+        <i class="bi bi-speedometer2"></i>
+        <span>Dashboard</span>
+    </a>
+    <a href="{{ url_for('logs') }}" class="sidebar-link {% if request.path.startswith('/logs') %}active{% endif %}">
+        <i class="bi bi-journal-text"></i>
+        <span>Logging</span>
+    </a>
+    <a href="{{ url_for('backup_page') }}" class="sidebar-link">
+        <i class="bi bi-hdd-stack"></i>
+        <span>Backups</span>
+    </a>
+</div>
