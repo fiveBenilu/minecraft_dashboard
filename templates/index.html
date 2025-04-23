@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Minecraft Server Control | Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary-color: #44bd32;
+            --secondary-color: #333;
+            --accent-color: #487eb0;
+            --dark-bg: #1e272e;
+            --card-bg: #2c3e50;
+            --light-text: #ecf0f1;
+        }
+        
+        body {
+            background-color: var(--dark-bg);
+            color: var(--light-text);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .navbar {
+            background-color: var(--card-bg);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        
+        .sidebar {
+            background-color: var(--card-bg);
+            height: calc(100vh - 56px);
+            position: fixed;
+            left: 0;
+            top: 56px;
+            width: 250px;
+            padding-top: 20px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            z-index: 100;
+            transition: all 0.3s;
+        }
+        
+        .sidebar-link {
+            color: var(--light-text);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            border-radius: 5px;
+            margin: 5px 10px;
+            transition: all 0.2s;
+        }
+        
+        .sidebar-link:hover {
+            background-color: rgba(255,255,255,0.1);
+            color: var(--primary-color);
+        }
+        
+        .sidebar-link.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .sidebar-link i {
+            margin-right: 10px;
+            font-size: 1.2rem;
+        }
+        
+        .main-content {
+            margin-left: 250px;
+            padding: 20px;
+            transition: all 0.3s;
+        }
+        
+        .dashboard-card {
+            background-color: var(--card-bg);
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        
+        .dashboard-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .dashboard-card-header {
+            background-color: rgba(0,0,0,0.2);
+            padding: 15px 20px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .dashboard-card-body {
+            padding: 20px;
+        }
+        
+        .status-indicator {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .status-online {
+            background-color: var(--primary-color);
+            box-shadow: 0 0 10px var(--primary-color);
+        }
+        
+        .status-offline {
+            background-color: #e74c3c;
+            box-shadow: 0 0 10px #e74c3c;
+        }
+        
+        .control-btn {
+            border-radius: 8px;
+            font-weight: 600;
+            padding: 10px 15px;
+            transition: all 0.2s;
+            border: none;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .control-btn i {
+            margin-right: 8px;
+        }
+        
+        .control-btn-start {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .control-btn-start:hover {
+            background-color: #3aa528;
+        }
+        
+        .control-btn-stop {
+            background-color: #e74c3c;
+            color: white;
+        }
+        
+        .control-btn-stop:hover {
+            background-color: #c0392b;
+        }
+        
+        .control-btn-restart {
+            background-color: #f39c12;
+            color: white;
+        }
+        
+        .control-btn-restart:hover {
+            background-color: #d68910;
+        }
+        
+        .stat-card {
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            color: white;
+            margin-bottom: 15px;
+        }
+        
+        .stat-card h3 {
+            margin: 0;
+            font-size: 2rem;
+            font-weight: 700;
+        }
+        
+        .stat-card p {
+            margin: 5px 0 0;
+            opacity: 0.8;
+            font-size: 0.9rem;
+        }
+        
+        .stat-cpu {
+            background: linear-gradient(135deg, #0d6efd, #0a4cb4);
+        }
+        
+        .stat-ram {
+            background: linear-gradient(135deg, #198754, #115c39);
+        }
+        
+        .stat-disk {
+            background: linear-gradient(135deg, #ffc107, #d39e00);
+        }
+        
+        .period-btn {
+            background-color: transparent;
+            color: var(--light-text);
+            border: 1px solid var(--light-text);
+            padding: 5px 10px;
+            margin-right: 5px;
+            border-radius: 5px;
+            transition: all 0.2s;
+        }
+        
+        .period-btn.active {
+            background-color: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+        
+        .status-event {
+            padding: 5px 10px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+        
+        .status-event-online {
+            background-color: rgba(68, 189, 50, 0.2);
+            border-left: 3px solid var(--primary-color);
+        }
+        
+        .status-event-offline {
+            background-color: rgba(231, 76, 60, 0.2);
+            border-left: 3px solid #e74c3c;
+        }
+        
+        @media (max-width: 992px) {
+            .sidebar {
+                width: 70px;
+                padding-top: 10px;
+            }
+            
+            .sidebar-link span {
+                display: none;
+            }
+            
+            .sidebar-link i {
+                margin-right: 0;
+                font-size: 1.5rem;
+            }
+            
+            .main-content {
+                margin-left: 70px;
+            }
+        }
+        
+        @media (max-width: 576px) {
+            .sidebar {
+                width: 0;
+                padding: 0;
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center" href="#">
+                <i class="bi bi-minecraft me-2" style="color: var(--primary-color);"></i>
+                <span>Minecraft Controller</span>
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/logout">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <a href="#" class="sidebar-link active">
+            <i class="bi bi-speedometer2"></i>
+            <span>Dashboard</span>
+        </a>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <h2 class="mb-4"><i class="bi bi-speedometer2 me-2"></i>Server Dashboard</h2>
+            </div>
+        </div>
+        
+        <div class="row">
+            <!-- Server Status Card -->
+            <div class="col-lg-6">
+                <div class="dashboard-card">
+                    <div class="dashboard-card-header">
+                        <span>Server Status & Kontrolle</span>
+                    </div>
+                    <div class="dashboard-card-body">
+                        <div class="d-flex align-items-center mb-4">
+                            <span class="status-indicator {{ 'status-online' if server_status == 'Läuft' else 'status-offline' }}"></span>
+                            <span class="h5 mb-0">{{ server_status }}</span>
+                            <span class="ms-auto">Uptime: <span id="uptime">Wird geladen...</span></span>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-sm-4">
+                                <a href="/start" class="control-btn control-btn-start w-100">
+                                    <i class="bi bi-play-fill"></i> Start
+                                </a>
+                            </div>
+                            <div class="col-sm-4">
+                                <a href="/stop" class="control-btn control-btn-stop w-100">
+                                    <i class="bi bi-stop-fill"></i> Stop
+                                </a>
+                            </div>
+                            <div class="col-sm-4">
+                                <a href="/restart" class="control-btn control-btn-restart w-100">
+                                    <i class="bi bi-arrow-repeat"></i> Restart
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- System Stats Card -->
+            <div class="col-lg-6">
+                <div class="dashboard-card">
+                    <div class="dashboard-card-header">
+                        <span>Systemauslastung</span>
+                        <button class="btn btn-sm btn-outline-light" onclick="loadStats()">
+                            <i class="bi bi-arrow-repeat"></i>
+                        </button>
+                    </div>
+                    <div class="dashboard-card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="stat-card stat-cpu">
+                                    <h3 id="cpu-value">0%</h3>
+                                    <p>CPU AUSLASTUNG</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="stat-card stat-ram">
+                                    <h3 id="ram-value">0%</h3>
+                                    <p>RAM NUTZUNG</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="stat-card stat-disk">
+                                    <h3 id="disk-value">0%</h3>
+                                    <p>SPEICHERPLATZ</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Verlaufsdiagramm -->
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="dashboard-card">
+                    <div class="dashboard-card-header">
+                        <span>Auslastungsverlauf</span>
+                        <div>
+                            <button class="period-btn active" data-period="24h">24h</button>
+                            <button class="period-btn" data-period="7d">7d</button>
+                            <button class="period-btn" data-period="30d">30d</button>
+                        </div>
+                    </div>
+                    <div class="dashboard-card-body">
+                        <canvas id="historyChart" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Server-Status-Ereignisse -->
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="dashboard-card">
+                    <div class="dashboard-card-header">
+                        <span>Server-Status-Änderungen</span>
+                    </div>
+                    <div class="dashboard-card-body">
+                        <div id="status-events" class="mb-3">
+                            <div class="text-center">
+                                <div class="spinner-border text-light" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2">Lade Status-Ereignisse...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Aktuelle Periode für das Verlaufsdiagramm
+        let currentPeriod = '24h';
+        let historyChart = null;
+        
+        // Funktion zum Laden der aktuellen Systemdaten
+        async function loadStats() {
+            try {
+                const res = await fetch('/systemdata');
+                const data = await res.json();
+                
+                // Aktualisiere die Werte in den Karten
+                document.getElementById('cpu-value').innerText = data.cpu + '%';
+                document.getElementById('ram-value').innerText = data.ram + '%';
+                document.getElementById('disk-value').innerText = data.disk + '%';
+                
+            } catch (error) {
+                console.error('Fehler beim Laden der Systemdaten:', error);
+            }
+        }
+        
+        // Funktion zum Laden der Uptime
+        async function loadUptime() {
+            try {
+                const res = await fetch('/uptime');
+                const data = await res.json();
+                document.getElementById('uptime').innerText = data.uptime;
+            } catch (error) {
+                console.error('Fehler beim Laden der Uptime:', error);
+                document.getElementById('uptime').innerText = 'Unbekannt';
+            }
+        }
+        
+        // Funktion zum Laden der Verlaufsdaten
+        async function loadHistoryData(period) {
+            try {
+                const res = await fetch(`/history/metrics/${period}`);
+                const data = await res.json();
+                
+                updateHistoryChart(data.metrics);
+                updateStatusEvents(data.status_changes);
+                
+            } catch (error) {
+                console.error('Fehler beim Laden der Verlaufsdaten:', error);
+            }
+        }
+        
+        // Funktion zur Aktualisierung des Verlaufsdiagramms
+        function updateHistoryChart(metrics) {
+            const ctx = document.getElementById('historyChart').getContext('2d');
+            
+            // Daten vorbereiten
+            const labels = metrics.map(entry => {
+                const date = new Date(entry.timestamp);
+                return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + 
+                       (currentPeriod !== '24h' ? ' ' + date.toLocaleDateString() : '');
+            });
+            
+            const cpuData = metrics.map(entry => entry.cpu_usage);
+            const ramData = metrics.map(entry => entry.ram_usage);
+            const diskData = metrics.map(entry => entry.disk_usage);
+            
+            // Chart erstellen oder aktualisieren
+            if (historyChart) {
+                historyChart.data.labels = labels;
+                historyChart.data.datasets[0].data = cpuData;
+                historyChart.data.datasets[1].data = ramData;
+                historyChart.data.datasets[2].data = diskData;
+                historyChart.update();
+            } else {
+                historyChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'CPU %',
+                                data: cpuData,
+                                borderColor: 'rgba(13, 110, 253, 1)',
+                                backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                                fill: true,
+                                tension: 0.3
+                            },
+                            {
+                                label: 'RAM %',
+                                data: ramData,
+                                borderColor: 'rgba(25, 135, 84, 1)',
+                                backgroundColor: 'rgba(25, 135, 84, 0.1)',
+                                fill: true,
+                                tension: 0.3
+                            },
+                            {
+                                label: 'Disk %',
+                                data: diskData,
+                                borderColor: 'rgba(255, 193, 7, 1)',
+                                backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                                fill: true,
+                                tension: 0.3
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        aspectRatio: 2.5, // Für ein breiteres, aber niedrigeres Chart
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    color: 'rgba(255, 255, 255, 0.7)'
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 100,
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: 'rgba(255, 255, 255, 0.7)'
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: 'rgba(255, 255, 255, 0.7)',
+                                    maxRotation: 45,
+                                    minRotation: 45
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+        
+        // Funktion zur Aktualisierung der Status-Ereignisse
+        function updateStatusEvents(statusChanges) {
+            const container = document.getElementById('status-events');
+            container.innerHTML = '';
+            
+            if (statusChanges.length === 0) {
+                container.innerHTML = '<p class="text-center">Keine Status-Änderungen im ausgewählten Zeitraum.</p>';
+                return;
+            }
+            
+            // Ereignisse in umgekehrter Reihenfolge anzeigen (neueste zuerst)
+            statusChanges.reverse().slice(0, 10).forEach(event => {
+                const date = new Date(event.timestamp);
+                const formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                
+                const isOnline = event.status === 'Läuft';
+                const statusClass = isOnline ? 'status-event-online' : 'status-event-offline';
+                const statusIcon = isOnline ? 
+                    '<i class="bi bi-check-circle-fill text-success"></i>' : 
+                    '<i class="bi bi-x-circle-fill text-danger"></i>';
+                
+                const eventElement = document.createElement('div');
+                eventElement.className = `status-event ${statusClass}`;
+                eventElement.innerHTML = `
+                    ${statusIcon} <strong>${event.status}</strong> - ${formattedDate}
+                `;
+                
+                container.appendChild(eventElement);
+            });
+        }
+        
+        // Zeitraum-Buttons einrichten
+        document.querySelectorAll('.period-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                // Aktiven Button markieren
+                document.querySelectorAll('.period-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                this.classList.add('active');
+                
+                // Daten für den neuen Zeitraum laden
+                currentPeriod = this.getAttribute('data-period');
+                loadHistoryData(currentPeriod);
+            });
+        });
+        
+        // Seite initialisieren
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStats();
+            loadUptime();
+            loadHistoryData(currentPeriod);
+            
+            // Automatische Aktualisierung
+            setInterval(loadStats, 10000);
+            setInterval(loadUptime, 30000);
+            
+            // Verlaufsdaten stündlich aktualisieren
+            setInterval(() => loadHistoryData(currentPeriod), 3600000);
+        });
+    </script>
+</body>
+</html>
